@@ -118,6 +118,12 @@
   textarea.synctext{min-height:70px;font-size:.8rem;font-family:monospace;}
   .syncnote{color:var(--clay);font-size:.82rem;margin-top:10px;}
   .syncmsg{margin-top:14px;font-size:.9rem;font-weight:500;min-height:1.2em;}
+  .cloudbox{background:var(--cream);border:1px solid #e2d3c6;border-radius:14px;padding:14px 16px;margin:6px 0 16px;}
+  .cloudstat{font-weight:600;color:var(--plum);}
+  .cloudstat.on{color:#4f7a52;}
+  .cloudform{margin-top:10px;display:flex;flex-direction:column;gap:8px;}
+  .cloudform input{padding:10px 12px;border:1px solid #e2d3c6;border-radius:10px;font-family:'Jost';font-size:16px;background:#fff;width:100%;}
+  .manualsync summary{cursor:pointer;color:var(--clay);font-size:.9rem;margin-bottom:12px;}
   .syncmsg.ok{color:#4f7a52;} .syncmsg.err{color:#b0413e;}
   textarea{width:100%;min-height:120px;border:1px solid #e2d3c6;border-radius:12px;padding:13px;font-family:'Jost';font-size:.98rem;background:var(--cream);resize:vertical;line-height:1.6;}
   textarea:focus{outline:2px solid var(--gold);border-color:transparent;}
@@ -393,7 +399,25 @@
     </div>
     <div class="card" id="syncCard">
       <h2>⇅ Sync Between Devices</h2>
-      <div class="cap">Copy your data across to your phone, tablet or MacBook. On the device you've been using, copy the code (or save the file). On the other device, paste it (or open the file) and press Restore.</div>
+      <div class="cap">Sign in once on each device with the same email and password. After that, every change saves to the cloud and shows up on your other devices automatically.</div>
+      <div id="cloudBox" class="cloudbox">
+        <div class="cloudstat" id="cloudStat">Connecting…</div>
+        <div id="cloudForm" class="cloudform" style="display:none">
+          <input id="cloudEmail" type="email" autocomplete="username" placeholder="Email">
+          <input id="cloudPass" type="password" autocomplete="current-password" placeholder="Password (6+ characters)" onkeydown="if(event.key==='Enter')cloudSignIn()">
+          <div class="syncbtns">
+            <button class="btn" onclick="cloudSignIn()">Sign in</button>
+            <button class="histbtn" onclick="cloudCreate()">Create account (first time only)</button>
+            <button class="histbtn" onclick="cloudReset()">Forgot password</button>
+          </div>
+        </div>
+        <div id="cloudOn" style="display:none" class="syncbtns">
+          <button class="histbtn" onclick="cloudSyncNow()">⟳ Sync now</button>
+          <button class="histbtn" onclick="cloudSignOut()">Sign out</button>
+        </div>
+        <div class="syncmsg" id="cloudMsg"></div>
+      </div>
+      <details class="manualsync"><summary>Manual backup (only if automatic sync isn't working)</summary>
       <div class="syncgrid">
         <div>
           <div class="synch">1 · Send from this device</div>
@@ -414,6 +438,7 @@
         </div>
       </div>
       <div class="syncmsg" id="syncMsg"></div>
+      </details>
     </div>
   </div>
 
@@ -845,6 +870,7 @@ function save(){
     redoStack=[]; lastChangeT=now;
   }
   lastSnap=snap; localStorage.setItem(KEY,snap); updateHistBtns();
+  if(typeof cloudQueue==='function')cloudQueue();
 }
 /* ---------- sync between devices (backup code / file) ---------- */
 const SYNC_PREFIX='VSBOS1:';
@@ -918,6 +944,7 @@ function restoreFromFile(inp){
 function restoreSnap(snap){
   state=JSON.parse(snap); lastSnap=snap; lastChangeT=0;
   localStorage.setItem(KEY,snap); render(); updateHistBtns();
+  if(typeof cloudQueue==='function')cloudQueue();
 }
 function undo(){ if(!undoStack.length)return; redoStack.push(lastSnap); restoreSnap(undoStack.pop()); }
 function redo(){ if(!redoStack.length)return; undoStack.push(lastSnap); restoreSnap(redoStack.pop()); }
@@ -1638,6 +1665,114 @@ document.querySelectorAll('.navbtn').forEach(b=>{
 function resetToday(){const r=dayRec(viewDay);r.rhythmTicks={};r.counters=defaultCounters();state.weekTicks={};save();render();}
 
 render();
+</script>
+
+<!-- ============ AUTOMATIC CLOUD SYNC (Firebase) ============ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script>
+/* Paste the config from Firebase → Project settings → Your apps → Web app here */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD6GNbgO2iYMYjUeMH1_I86hWZEFhOTyPo",
+  authDomain: "vsb-os.firebaseapp.com",
+  projectId: "vsb-os",
+  storageBucket: "vsb-os.firebasestorage.app",
+  messagingSenderId: "510870242064",
+  appId: "1:510870242064:web:758221916cfed62298db95"
+};
+
+let cloudDb=null, cloudAuth=null, cloudUser=null, cloudUnsub=null, cloudTimer=null, applyingRemote=false, cloudReady=false;
+const DEVICE_ID=(()=>{let d=null;try{d=localStorage.getItem(KEY+'_device');}catch(e){}
+  if(!d){d=Math.random().toString(36).slice(2)+Date.now().toString(36);try{localStorage.setItem(KEY+'_device',d);}catch(e){}}return d;})();
+
+function cloudMsg(t,ok){const m=document.getElementById('cloudMsg');if(!m)return;m.textContent=t||'';m.className='syncmsg '+(t?(ok?'ok':'err'):'');}
+function cloudStat(t,on){const s=document.getElementById('cloudStat');if(!s)return;s.textContent=t;s.className='cloudstat'+(on?' on':'');}
+function cloudShow(signedIn){
+  document.getElementById('cloudForm').style.display=signedIn?'none':'flex';
+  document.getElementById('cloudOn').style.display=signedIn?'flex':'none';
+}
+function cloudDoc(){return cloudDb.collection('vsbos').doc(cloudUser.uid);}
+function stamp(){return new Date().toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'});}
+
+function cloudQueue(){
+  if(!cloudReady||!cloudUser||applyingRemote)return;
+  clearTimeout(cloudTimer); cloudStat('⟳ Saving…',true);
+  cloudTimer=setTimeout(cloudPush,1000);
+}
+function cloudPush(){
+  if(!cloudUser)return Promise.resolve();
+  const snap=lastSnap||JSON.stringify(state);
+  return cloudDoc().set({data:snap,device:DEVICE_ID,updatedAt:firebase.firestore.FieldValue.serverTimestamp()})
+    .then(()=>cloudStat('✓ Synced · '+cloudUser.email+' · '+stamp(),true))
+    .catch(e=>{cloudStat('⚠ Not synced — will retry',false);cloudMsg(cloudErr(e),false);setTimeout(cloudQueue,15000);});
+}
+function applyRemote(data){
+  if(!data||data===lastSnap)return;
+  let parsed; try{parsed=JSON.parse(data);}catch(e){return;}
+  applyingRemote=true;
+  try{
+    if(lastSnap!==null){undoStack.push(lastSnap);if(undoStack.length>HIST_MAX)undoStack.shift();redoStack=[];}
+    localStorage.setItem(KEY,data);
+    state=load(); lastSnap=JSON.stringify(state); localStorage.setItem(KEY,lastSnap);
+    render(); updateHistBtns();
+  }finally{applyingRemote=false;}
+}
+function cloudListen(){
+  if(cloudUnsub)cloudUnsub();
+  cloudUnsub=cloudDoc().onSnapshot(doc=>{
+    if(doc.metadata.hasPendingWrites||!doc.exists)return;
+    const r=doc.data();
+    if(r.device!==DEVICE_ID&&r.data!==lastSnap){applyRemote(r.data);}
+    cloudStat('✓ Synced · '+cloudUser.email+' · '+stamp(),true);
+  },e=>{cloudStat('⚠ Sync paused',false);cloudMsg(cloudErr(e),false);});
+}
+function cloudStart(){
+  /* first sign-in on this device: cloud copy wins if there is one, otherwise upload this device */
+  cloudStat('⟳ Syncing…',true);
+  cloudDoc().get().then(doc=>{
+    if(doc.exists&&doc.data().data){applyRemote(doc.data().data);cloudMsg('This device now matches your cloud copy. Press Undo if anything looks wrong.',true);}
+    else{cloudMsg('Your data from this device is now saved to the cloud. Sign in on your other devices with the same email and password.',true);return cloudPush();}
+  }).then(()=>{cloudListen();cloudStat('✓ Synced · '+cloudUser.email+' · '+stamp(),true);})
+    .catch(e=>{cloudStat('⚠ Not synced',false);cloudMsg(cloudErr(e),false);});
+}
+function cloudErr(e){
+  const c=(e&&e.code)||'';
+  const map={'auth/invalid-email':'That email address doesn\'t look right.','auth/missing-password':'Type your password.',
+    'auth/weak-password':'Use a password with at least 6 characters.','auth/email-already-in-use':'That email already has an account — tap Sign in instead.',
+    'auth/invalid-credential':'Email or password is wrong. Check them, or tap Forgot password.','auth/wrong-password':'Wrong password. Try again, or tap Forgot password.',
+    'auth/user-not-found':'No account with that email yet — tap Create account (first time only).','auth/too-many-requests':'Too many tries. Wait a few minutes and try again.',
+    'auth/network-request-failed':'No internet connection. Your changes are safe on this device and will sync when you\'re back online.',
+    'permission-denied':'The cloud refused access. The Firebase security rules need checking.','unavailable':'Offline right now — will sync when you\'re back online.'};
+  return map[c]||('Something went wrong'+(c?' ('+c+')':'')+'. Try again.');
+}
+function cloudCreds(){return [document.getElementById('cloudEmail').value.trim(),document.getElementById('cloudPass').value];}
+function cloudSignIn(){const [e,p]=cloudCreds();cloudMsg('Signing in…',true);cloudAuth.signInWithEmailAndPassword(e,p).catch(x=>cloudMsg(cloudErr(x),false));}
+function cloudCreate(){const [e,p]=cloudCreds();cloudMsg('Creating your account…',true);cloudAuth.createUserWithEmailAndPassword(e,p).catch(x=>cloudMsg(cloudErr(x),false));}
+function cloudReset(){const [e]=cloudCreds();if(!e)return cloudMsg('Type your email first, then tap Forgot password.',false);
+  cloudAuth.sendPasswordResetEmail(e).then(()=>cloudMsg('Password reset email sent to '+e+'.',true)).catch(x=>cloudMsg(cloudErr(x),false));}
+function cloudSignOut(){if(cloudUnsub)cloudUnsub();cloudUnsub=null;cloudAuth.signOut();cloudMsg('Signed out. Your data stays on this device.',true);}
+function cloudSyncNow(){if(!cloudUser)return;cloudStat('⟳ Syncing…',true);
+  cloudDoc().get({source:'server'}).then(doc=>{const r=doc.exists?doc.data():null;
+    if(r&&r.data&&r.data!==lastSnap&&r.device!==DEVICE_ID)applyRemote(r.data);else return cloudPush();})
+  .then(()=>cloudStat('✓ Synced · '+cloudUser.email+' · '+stamp(),true)).catch(e=>cloudMsg(cloudErr(e),false));}
+
+(function cloudInit(){
+  if(!FIREBASE_CONFIG){cloudStat('Automatic sync isn\'t switched on yet.',false);return;}
+  if(typeof firebase==='undefined'){cloudStat('⚠ Can\'t reach the sync service. Check your internet and reload.',false);return;}
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    cloudAuth=firebase.auth(); cloudDb=firebase.firestore();
+    cloudAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
+    cloudReady=true;
+    cloudAuth.onAuthStateChanged(u=>{
+      cloudUser=u; cloudShow(!!u);
+      if(u){document.getElementById('cloudPass').value='';cloudStart();}
+      else cloudStat('Not signed in — this device isn\'t syncing.',false);
+    });
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudUser)cloudSyncNow();});
+  }catch(e){cloudStat('⚠ Sync setup error: '+(e.message||e),false);}
+})();
 </script>
 </body>
 </html>

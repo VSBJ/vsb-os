@@ -309,6 +309,23 @@
   .journal-entry:hover{box-shadow:0 3px 12px rgba(107,45,92,.12);}
 
   .ideabox .idea{background:var(--cream);border-radius:10px;padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;font-size:.94rem;}
+  /* ---------- phone-safe: nothing may push the page wider than the screen ---------- */
+  html,body{max-width:100%;overflow-x:hidden;}
+  .wrap,.card,.view,section,main{max-width:100%;min-width:0;}
+  .grid2>*,.grid3>*,.syncgrid>*,.stats>*{min-width:0;}
+  .lbl,li,p,td,label{overflow-wrap:anywhere;}
+  .lbl{min-width:0;}
+  input,select,textarea,button{max-width:100%;}
+  textarea{word-break:break-all;}
+  img,video,iframe,canvas,svg{max-width:100%;height:auto;}
+  footer{overflow-wrap:anywhere;}
+  @media(max-width:520px){
+    .wrap{padding:14px;}
+    .card{padding:18px 16px;}
+    .stat{flex:1 1 calc(50% - 8px);min-width:0;}
+    .daynav .dlabel{min-width:0;}
+    .glanceadd .glancewhen{flex:1 1 auto;min-width:0;}
+  }
 </style>
 </head>
 <body>

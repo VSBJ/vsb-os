@@ -288,6 +288,21 @@
   .daynav .dlabel .dt{font-size:.72rem;letter-spacing:1.3px;text-transform:uppercase;color:var(--clay);margin-top:1px;}
   .daynav .today{background:var(--blush);border:none;color:var(--plum);padding:8px 16px;border-radius:22px;font-family:'Jost';font-weight:500;font-size:.82rem;cursor:pointer;flex-shrink:0;}
   .daynav .today:hover{background:var(--orchid);color:#fff;}
+  .weekstrip{flex-basis:100%;display:flex;align-items:center;gap:6px;border-top:1px dashed #eaddd2;padding-top:12px;margin-top:2px;}
+  .wkdays{flex:1;display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .wkjump{background:none;border:none;color:var(--plum);font-size:1.2rem;cursor:pointer;padding:4px 6px;font-family:'Jost';}
+  .wkjump:disabled{opacity:.25;cursor:default;}
+  .wkday{background:var(--cream);border:1.5px solid transparent;border-radius:12px;padding:6px 0 7px;cursor:pointer;font-family:'Jost';color:var(--plum);display:flex;flex-direction:column;align-items:center;gap:1px;transition:.15s;}
+  .wkday:hover:not(:disabled){border-color:var(--orchid);}
+  .wkday .wn{font-size:.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--clay);}
+  .wkday .wd{font-size:1rem;font-weight:600;}
+  .wkday .wdot{width:6px;height:6px;border-radius:50%;background:transparent;margin-top:2px;}
+  .wkday.has .wdot{background:var(--gold);}
+  .wkday.istoday .wd{text-decoration:underline;text-decoration-color:var(--gold);text-underline-offset:3px;}
+  .wkday.sel{background:var(--plum);}
+  .wkday.sel .wn,.wkday.sel .wd{color:#fff;}
+  .wkday:disabled{opacity:.3;cursor:default;}
+  @media(max-width:520px){.wkdays{gap:3px;}.wkday .wn{font-size:.6rem;letter-spacing:.3px;}.wkjump{padding:4px 2px;}}
   .daynav .today:disabled{opacity:.35;cursor:default;background:var(--blush);color:var(--plum);}
   .pastnote{background:linear-gradient(135deg,var(--gold),var(--gold-d));color:#fff;border-radius:14px;padding:11px 18px;margin-bottom:20px;font-size:.88rem;display:flex;align-items:center;gap:9px;}
   .journal-entry{cursor:pointer;}
@@ -399,6 +414,11 @@
       </div>
       <button class="dbtn" id="dayNext" aria-label="Next day">&#8250;</button>
       <button class="today" id="dayToday">Today</button>
+      <div class="weekstrip">
+        <button class="wkjump" id="weekPrev" aria-label="Previous week" title="Previous week">&laquo;</button>
+        <div class="wkdays" id="weekDays"></div>
+        <button class="wkjump" id="weekNext" aria-label="Next week" title="Next week">&raquo;</button>
+      </div>
     </div>
     <div class="pastnote" id="pastNote" style="display:none;">
       <span>&#9998;</span><span id="pastNoteText"></span>
@@ -923,6 +943,7 @@ function renderDayNav(){
     diff===0?'Today':diff===1?'Yesterday':diff+' days ago';
   document.getElementById('dayNext').disabled=today;
   document.getElementById('dayToday').disabled=today;
+  renderWeek7();
   const note=document.getElementById('pastNote');
   note.style.display=today?'none':'flex';
   if(!today)document.getElementById('pastNoteText').textContent=
@@ -936,6 +957,34 @@ function renderDayNav(){
     ?'Tap + as you go — resets each morning'
     :'Fill in what that day actually looked like';
 }
+function dayHasData(ds){
+  const r=state.days&&state.days[ds];
+  const any=r&&((r.rhythmTicks&&Object.keys(r.rhythmTicks).some(k=>r.rhythmTicks[k]))||(r.grat&&r.grat.length)||(r.tasks&&r.tasks.length)||(r.counters&&r.counters.some(c=>c.val)));
+  return !!any||state.journal.some(e=>e.date===ds);
+}
+function renderWeek7(){
+  const v=new Date(viewDay+'T00:00:00');
+  const mon=new Date(v); mon.setDate(v.getDate()-((v.getDay()+6)%7));
+  const box=document.getElementById('weekDays'); box.innerHTML='';
+  for(let i=0;i<7;i++){
+    const d=new Date(mon); d.setDate(mon.getDate()+i); const ds=dstr(d);
+    const b=document.createElement('button'); b.type='button';
+    b.className='wkday'+(ds===viewDay?' sel':'')+(ds===todayStr?' istoday':'')+(dayHasData(ds)?' has':'');
+    b.innerHTML='<span class="wn">'+d.toLocaleDateString('en-AU',{weekday:'short'})+'</span><span class="wd">'+d.getDate()+'</span><span class="wdot"></span>';
+    b.title=prettyDay(ds); b.disabled=ds>todayStr;
+    b.onclick=()=>{viewDay=ds;render();};
+    box.appendChild(b);
+  }
+  const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+  document.getElementById('weekNext').disabled=dstr(sun)>=todayStr;
+}
+function jumpWeek(n){
+  const d=new Date(viewDay+'T00:00:00'); d.setDate(d.getDate()+7*n);
+  let ds=dstr(d); if(ds>todayStr)ds=todayStr;
+  viewDay=ds; render();
+}
+document.getElementById('weekPrev').onclick=()=>jumpWeek(-1);
+document.getElementById('weekNext').onclick=()=>jumpWeek(1);
 document.getElementById('dayPrev').onclick=()=>shiftDay(-1);
 document.getElementById('dayNext').onclick=()=>shiftDay(1);
 document.getElementById('dayToday').onclick=()=>{viewDay=todayStr;render();};

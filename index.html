@@ -98,6 +98,27 @@
   .addrow input:focus{outline:2px solid var(--gold);border-color:transparent;}
   .btn{background:var(--plum);color:var(--cream);border:none;border-radius:10px;padding:9px 17px;font-family:'Jost';font-weight:500;cursor:pointer;transition:.15s;}
   .btn:hover{background:var(--plum-d);}
+  .histbar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;}
+  .histbtn{background:transparent;color:var(--plum);border:1.5px solid var(--plum);border-radius:10px;padding:6px 14px;font-family:'Jost';font-weight:500;cursor:pointer;transition:.15s;}
+  .histbtn:hover:not(:disabled){background:var(--plum);color:var(--cream);}
+  .histbtn:disabled{opacity:.35;cursor:default;}
+  .donetoggle{background:none;border:none;color:var(--clay);font-family:'Jost';font-size:.85rem;cursor:pointer;padding:8px 0 2px;}
+  .donetoggle:hover{color:var(--plum);}
+  .donelist li{opacity:.75;}
+  .glanceadd{flex-wrap:wrap;}
+  .glanceadd .glancetime{flex:0 0 90px;width:90px;min-width:0;}
+  .glanceadd #glanceIn{min-width:0;}
+  .glancewhen{padding:9px 10px;border:1px solid #e2d3c6;border-radius:10px;font-family:'Jost';font-size:.88rem;background:var(--cream);color:var(--plum);}
+  @media(max-width:520px){.glanceadd #glanceIn{flex:1 1 100%;}}
+  .syncgrid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  @media(max-width:700px){.syncgrid{grid-template-columns:1fr;}}
+  .synch{font-weight:600;color:var(--plum);margin-bottom:10px;}
+  .syncbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .syncbtns .histbtn{display:inline-flex;align-items:center;font-size:13.33px;}
+  textarea.synctext{min-height:70px;font-size:.8rem;font-family:monospace;}
+  .syncnote{color:var(--clay);font-size:.82rem;margin-top:10px;}
+  .syncmsg{margin-top:14px;font-size:.9rem;font-weight:500;min-height:1.2em;}
+  .syncmsg.ok{color:#4f7a52;} .syncmsg.err{color:#b0413e;}
   textarea{width:100%;min-height:120px;border:1px solid #e2d3c6;border-radius:12px;padding:13px;font-family:'Jost';font-size:.98rem;background:var(--cream);resize:vertical;line-height:1.6;}
   textarea:focus{outline:2px solid var(--gold);border-color:transparent;}
   .savednote{font-size:.78rem;color:var(--sage-d);margin-top:6px;height:14px;}
@@ -298,6 +319,10 @@
 
   <!-- ============ HOME ============ -->
   <div class="view active" id="home">
+    <div class="histbar">
+      <button class="histbtn undoBtn" id="undoBtn" onclick="undo()" title="Undo (Ctrl/Cmd+Z)" disabled>↶ Undo</button>
+      <button class="histbtn redoBtn" id="redoBtn" onclick="redo()" title="Redo (Ctrl/Cmd+Shift+Z)" disabled>↷ Redo</button>
+    </div>
     <div class="stat-row">
       <div class="stat"><div class="n" id="hDay">0%</div><div class="l">Day Progress</div></div>
       <div class="stat"><div class="n" id="hTasks">0</div><div class="l">Open Tasks</div></div>
@@ -321,14 +346,50 @@
     </div>
     <div class="card">
       <h2>Today at a Glance</h2>
-      <div class="cap">Your rhythm progress — full tracker in My Day</div>
+      <div class="cap">Today's rhythm &amp; tasks — tick to close, × to delete, add as you go</div>
       <ul class="list" id="homeRhythm"></ul>
+      <button class="donetoggle" id="homeDoneToggle" onclick="homeShowDone=!homeShowDone;renderRhythm();"></button>
+      <ul class="list donelist" id="homeDone"></ul>
+      <div class="addrow glanceadd">
+        <input id="glanceIn" placeholder="Add a task…" onkeydown="if(event.key==='Enter')addGlance()">
+        <input id="glanceTime" class="glancetime" placeholder="Time" onkeydown="if(event.key==='Enter')addGlance()">
+        <select id="glanceWhen" class="glancewhen"><option value="today">Today only</option><option value="daily">Every day</option></select>
+        <button class="btn" onclick="addGlance()">Add</button>
+      </div>
       <div class="progress"><div id="homeBar"></div></div>
+      <div class="ptext" id="homePtext"></div>
+    </div>
+    <div class="card" id="syncCard">
+      <h2>⇅ Sync Between Devices</h2>
+      <div class="cap">Copy your data across to your phone, tablet or MacBook. On the device you've been using, copy the code (or save the file). On the other device, paste it (or open the file) and press Restore.</div>
+      <div class="syncgrid">
+        <div>
+          <div class="synch">1 · Send from this device</div>
+          <div class="syncbtns">
+            <button class="btn" onclick="copySyncCode()">📋 Copy backup code</button>
+            <button class="histbtn" onclick="downloadBackup()">⬇ Save backup file</button>
+          </div>
+          <div class="syncnote" id="syncLast"></div>
+        </div>
+        <div>
+          <div class="synch">2 · Receive on this device</div>
+          <textarea id="syncIn" class="synctext" placeholder="Paste a backup code here…"></textarea>
+          <div class="syncbtns">
+            <button class="btn" onclick="restoreFromCode()">Restore</button>
+            <label class="histbtn">📂 Open backup file<input type="file" accept=".json,application/json,text/plain" onchange="restoreFromFile(this)" hidden></label>
+          </div>
+        </div>
+      </div>
+      <div class="syncmsg" id="syncMsg"></div>
     </div>
   </div>
 
   <!-- ============ MY DAY ============ -->
   <div class="view" id="myday">
+    <div class="histbar">
+      <button class="histbtn undoBtn" onclick="undo()" title="Undo (Ctrl/Cmd+Z)" disabled>↶ Undo</button>
+      <button class="histbtn redoBtn" onclick="redo()" title="Redo (Ctrl/Cmd+Shift+Z)" disabled>↷ Redo</button>
+    </div>
 
     <div class="daynav">
       <button class="dbtn" id="dayPrev" aria-label="Previous day">&#8249;</button>
@@ -700,9 +761,10 @@ function blank(){return{
   weekTicks:{}, milestones:defaultMilestones(),
   ideas:[], verseIndex:Math.floor(Math.random()*5),
   revModel:defaultRevModel(), revSubs:defaultRevSubs(), revActuals:{},
-  posts:[], postPlats:[]
+  posts:[], postPlats:[], rhythm:defaultRhythm()
 };}
 
+const HIST_MAX=50; let undoStack=[], redoStack=[], lastSnap=null, lastChangeT=0;
 let state=load();
 save();  /* persist migrated/rolled-over shape immediately */
 function load(){
@@ -721,7 +783,7 @@ function load(){
   }
   if(raw.lastDay!==todayStr){
     const prev=raw.days[raw.lastDay];
-    const full=!!prev&&defaultRhythm().every(it=>prev.rhythmTicks&&prev.rhythmTicks[it.id]);
+    const full=!!prev&&(raw.rhythm||defaultRhythm()).every(it=>prev.rhythmTicks&&prev.rhythmTicks[it.id]);
     raw.streak=full?(raw.streak||0)+1:0;
     raw.weekTicks={};
     raw.top3=(raw.top3||[]).filter(x=>!x.done);
@@ -733,7 +795,93 @@ function load(){
   for(const k in d){ if(raw[k]===undefined) raw[k]=d[k]; }
   return raw;
 }
-function save(){localStorage.setItem(KEY,JSON.stringify(state));}
+/* ---------- undo / redo ---------- */
+function save(){
+  const snap=JSON.stringify(state);
+  if(lastSnap!==null && snap!==lastSnap){
+    const now=Date.now();
+    /* quick bursts (e.g. typing a number) count as one step */
+    if(!(now-lastChangeT<800 && undoStack.length)){
+      undoStack.push(lastSnap); if(undoStack.length>HIST_MAX)undoStack.shift();
+    }
+    redoStack=[]; lastChangeT=now;
+  }
+  lastSnap=snap; localStorage.setItem(KEY,snap); updateHistBtns();
+}
+/* ---------- sync between devices (backup code / file) ---------- */
+const SYNC_PREFIX='VSBOS1:';
+function toB64(str){const b=new TextEncoder().encode(str);let s='';b.forEach(c=>s+=String.fromCharCode(c));return btoa(s);}
+function fromB64(b64){const s=atob(b64);return new TextDecoder().decode(Uint8Array.from(s,c=>c.charCodeAt(0)));}
+function syncMsg(t,ok){const m=document.getElementById('syncMsg');m.textContent=t;m.className='syncmsg '+(ok?'ok':'err');}
+function stampExport(){
+  const t=new Date().toLocaleString('en-AU',{weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  try{localStorage.setItem(KEY+'_lastExport',t);}catch(e){}
+  renderSyncNote();
+}
+function renderSyncNote(){
+  const el=document.getElementById('syncLast'); if(!el)return;
+  let t=null; try{t=localStorage.getItem(KEY+'_lastExport');}catch(e){}
+  el.textContent=t?('Last sent from this device: '+t):'Not sent from this device yet.';
+}
+function copySyncCode(){
+  const code=SYNC_PREFIX+toB64(JSON.stringify(state));
+  const done=()=>{stampExport();syncMsg('Code copied. Paste it into a message, note or email to yourself, then paste it into the other device.',true);};
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(code).then(done,()=>fallbackCopy(code,done));
+  } else fallbackCopy(code,done);
+}
+function fallbackCopy(code,done){
+  const ta=document.getElementById('syncIn'); ta.value=code; ta.focus(); ta.select();
+  let ok=false; try{ok=document.execCommand('copy');}catch(e){}
+  if(ok){ta.value='';done();}
+  else{stampExport();syncMsg('Your code is in the box. Select it all and copy it.',true);}
+}
+function downloadBackup(){
+  const blob=new Blob([JSON.stringify(state)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='vsb-os-backup-'+todayStr+'.json'; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+  stampExport(); syncMsg('Backup file saved. Open it on your other device with "Open backup file".',true);
+}
+function applyBackup(json){
+  let data; try{data=JSON.parse(json);}catch(e){return syncMsg('That doesn\'t look like a VSB OS backup. Check you copied the whole code.',false);}
+  if(!data||typeof data!=='object'||!('top3' in data)||!('days' in data||'rhythmTicks' in data))
+    return syncMsg('That doesn\'t look like a VSB OS backup.',false);
+  localStorage.setItem(KEY,JSON.stringify(data));
+  state=load(); save(); render();
+  document.getElementById('syncIn').value='';
+  syncMsg('Restored ✓  This device now matches your other one. Press Undo if this was a mistake.',true);
+}
+function restoreFromCode(){
+  let c=document.getElementById('syncIn').value.trim().replace(/\s+/g,'');
+  if(!c)return syncMsg('Paste a backup code first.',false);
+  if(c.startsWith(SYNC_PREFIX))c=c.slice(SYNC_PREFIX.length);
+  let json; try{json=fromB64(c);}catch(e){return syncMsg('That code is incomplete or damaged. Copy it again from the other device.',false);}
+  applyBackup(json);
+}
+function restoreFromFile(inp){
+  const f=inp.files&&inp.files[0]; if(!f)return;
+  const r=new FileReader(); r.onload=()=>{applyBackup(String(r.result)); inp.value='';};
+  r.readAsText(f);
+}
+function restoreSnap(snap){
+  state=JSON.parse(snap); lastSnap=snap; lastChangeT=0;
+  localStorage.setItem(KEY,snap); render(); updateHistBtns();
+}
+function undo(){ if(!undoStack.length)return; redoStack.push(lastSnap); restoreSnap(undoStack.pop()); }
+function redo(){ if(!redoStack.length)return; undoStack.push(lastSnap); restoreSnap(redoStack.pop()); }
+function updateHistBtns(){
+  document.querySelectorAll('.undoBtn').forEach(b=>b.disabled=!undoStack.length);
+  document.querySelectorAll('.redoBtn').forEach(b=>b.disabled=!redoStack.length);
+}
+document.addEventListener('keydown',e=>{
+  if(!(e.metaKey||e.ctrlKey))return;
+  const t=e.target, typing=t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable);
+  if(typing)return; /* let text boxes keep their own undo */
+  const k=e.key.toLowerCase();
+  if(k==='z'&&!e.shiftKey){e.preventDefault();undo();}
+  else if((k==='z'&&e.shiftKey)||k==='y'){e.preventDefault();redo();}
+});
 
 /* ---------- per-day records ---------- */
 function dayRec(ds){
@@ -743,6 +891,7 @@ function dayRec(ds){
   if(!r.rhythmTicks)r.rhythmTicks={};
   if(!r.counters||!r.counters.length)r.counters=defaultCounters();
   if(!r.grat)r.grat=[];
+  if(!r.tasks)r.tasks=[];
   return r;
 }
 function shiftDay(n){
@@ -797,6 +946,7 @@ function render(){
   renderGrat(); renderJournal(); renderTodayReflection();
   renderPlatformCards(); renderCompany(); renderWeek(); renderFocus();
   renderMilestones(); renderIdeas(); renderMission(); renderRevenue(); renderPlanner(); renderStats();
+  renderSyncNote();
 }
 
 function renderGreet(){
@@ -812,23 +962,60 @@ function mkCheck(checked,onchange){const cb=document.createElement('input');cb.t
 function mkLbl(text){const s=document.createElement('span');s.className='lbl';s.textContent=text;return s;}
 function mkDel(onclick){const b=document.createElement('button');b.className='del';b.textContent='×';b.onclick=onclick;return b;}
 
+let homeShowDone=false;
+function dayItems(ds){
+  const r=dayRec(ds);
+  return state.rhythm.map(it=>({...it,daily:true})).concat(r.tasks.map(it=>({...it,daily:false})));
+}
+function badge(it){return it.time||(it.daily?'Daily':'Today');}
+function rhythmLi(it,ds,withDel){
+  const rec=dayRec(ds), li=document.createElement('li');
+  li.appendChild(mkCheck(!!rec.rhythmTicks[it.id],v=>{
+    if(v)rec.rhythmTicks[it.id]=true; else delete rec.rhythmTicks[it.id];
+    save();renderRhythm();renderStats();}));
+  li.appendChild(mkLbl(it.t));
+  const t=document.createElement('span');t.className='time';t.textContent=badge(it);li.appendChild(t);
+  if(withDel)li.appendChild(mkDel(()=>deleteGlance(it,ds)));
+  return li;
+}
 function renderRhythm(){
-  const items=defaultRhythm();
-  [['rhythmList',true],['homeRhythm',false]].forEach(([id])=>{
-    const ul=document.getElementById(id); ul.innerHTML='';
-    items.forEach(it=>{
-      const li=document.createElement('li');
-      li.appendChild(mkCheck(!!dayRec(viewDay).rhythmTicks[it.id],v=>{dayRec(viewDay).rhythmTicks[it.id]=v;save();renderRhythm();renderStats();}));
-      li.appendChild(mkLbl(it.t));
-      const t=document.createElement('span');t.className='time';t.textContent=it.time;li.appendChild(t);
-      ul.appendChild(li);
-    });
-  });
-  const done=items.filter(it=>dayRec(viewDay).rhythmTicks[it.id]).length;
-  const pct=Math.round(done/items.length*100);
-  document.getElementById('rhythmBar').style.width=pct+'%';
-  document.getElementById('homeBar').style.width=pct+'%';
-  document.getElementById('rhythmPtext').textContent=done+' of '+items.length+' complete today';
+  /* My Day — selected day, full list in order */
+  const ul=document.getElementById('rhythmList'); ul.innerHTML='';
+  const mItems=dayItems(viewDay), mRec=dayRec(viewDay);
+  mItems.forEach(it=>ul.appendChild(rhythmLi(it,viewDay,false)));
+  const mDone=mItems.filter(it=>mRec.rhythmTicks[it.id]).length;
+  const mPct=mItems.length?Math.round(mDone/mItems.length*100):0;
+  document.getElementById('rhythmBar').style.width=mPct+'%';
+  document.getElementById('rhythmPtext').textContent=mDone+' of '+mItems.length+' complete';
+
+  /* Home — always today; open items first, completed tucked away */
+  const hItems=dayItems(todayStr), hRec=dayRec(todayStr);
+  const open=hItems.filter(it=>!hRec.rhythmTicks[it.id]), done=hItems.filter(it=>hRec.rhythmTicks[it.id]);
+  const hu=document.getElementById('homeRhythm'); hu.innerHTML='';
+  if(!open.length){const li=document.createElement('li');li.appendChild(mkLbl(hItems.length?'All done for today 🎉':'Nothing here yet — add a task below'));hu.appendChild(li);}
+  open.forEach(it=>hu.appendChild(rhythmLi(it,todayStr,true)));
+  const tg=document.getElementById('homeDoneToggle'), du=document.getElementById('homeDone'); du.innerHTML='';
+  tg.style.display=done.length?'':'none';
+  tg.textContent=(homeShowDone?'▾ Hide ':'▸ Show ')+done.length+' completed';
+  du.style.display=homeShowDone?'':'none';
+  done.forEach(it=>du.appendChild(rhythmLi(it,todayStr,true)));
+  const hPct=hItems.length?Math.round(done.length/hItems.length*100):0;
+  document.getElementById('homeBar').style.width=hPct+'%';
+  document.getElementById('homePtext').textContent=done.length+' of '+hItems.length+' complete today';
+}
+function addGlance(){
+  const inp=document.getElementById('glanceIn'), tm=document.getElementById('glanceTime');
+  const v=inp.value.trim(); if(!v)return;
+  const it={id:'g'+Date.now().toString(36),time:tm.value.trim(),t:v};
+  if(document.getElementById('glanceWhen').value==='daily')state.rhythm.push(it);
+  else dayRec(todayStr).tasks.push(it);
+  inp.value='';tm.value='';save();renderRhythm();renderStats();inp.focus();
+}
+function deleteGlance(it,ds){
+  if(it.daily)state.rhythm=state.rhythm.filter(x=>x.id!==it.id);
+  else{const r=dayRec(ds);r.tasks=r.tasks.filter(x=>x.id!==it.id);}
+  delete dayRec(ds).rhythmTicks[it.id];
+  save();renderRhythm();renderStats();
 }
 
 function renderCounters(){
@@ -1022,9 +1209,9 @@ function addIdea(){const inp=document.getElementById('ideaIn');const v=inp.value
 function renderMission(){document.getElementById('missionText').textContent='To give beauty for ashes — building Christ-centered platforms that bring healing, identity, and hope to wounded women, all clean and unto the Lord.';}
 
 function renderStats(){
-  const items=defaultRhythm();
+  const items=dayItems(todayStr);
   const rdone=items.filter(it=>dayRec(todayStr).rhythmTicks[it.id]).length;
-  document.getElementById('hDay').textContent=Math.round(rdone/items.length*100)+'%';
+  document.getElementById('hDay').textContent=(items.length?Math.round(rdone/items.length*100):0)+'%';
   let open=0,done=0;
   state.platforms.forEach(p=>p.tasks.forEach(t=>t.done?done++:open++));
   state.company.forEach(t=>t.done?done++:open++);

@@ -873,10 +873,18 @@ function applyBackup(json){
   syncMsg('Restored ✓  This device now matches your other one. Press Undo if this was a mistake.',true);
 }
 function restoreFromCode(){
-  let c=document.getElementById('syncIn').value.trim().replace(/\s+/g,'');
-  if(!c)return syncMsg('Paste a backup code first.',false);
-  if(c.startsWith(SYNC_PREFIX))c=c.slice(SYNC_PREFIX.length);
-  let json; try{json=fromB64(c);}catch(e){return syncMsg('That code is incomplete or damaged. Copy it again from the other device.',false);}
+  let raw=document.getElementById('syncIn').value||'';
+  if(!raw.trim())return syncMsg('Paste a backup code first.',false);
+  /* tidy up whatever the messaging app added: dates, names, spaces, line breaks, look-alike characters */
+  raw=raw.normalize('NFKC');
+  const at=raw.indexOf(SYNC_PREFIX);
+  if(at>=0)raw=raw.slice(at+SYNC_PREFIX.length);
+  let c=raw.replace(/[−‐-―]/g,'-').replace(/[^A-Za-z0-9+/=_-]/g,'');
+  c=c.replace(/-/g,'+').replace(/_/g,'/').replace(/=+/g,'');
+  while(c.length%4)c+='=';
+  let json; try{json=fromB64(c);}catch(e){json=null;}
+  if(!json||json.trim()[0]!=='{')return syncMsg('That code is incomplete or damaged ('+c.length+' characters). Try sending it again, or use "Save backup file" instead.',false);
+  try{JSON.parse(json);}catch(e){return syncMsg('Only part of the code came through ('+c.length+' characters). Copy the whole message again, or use "Save backup file" instead.',false);}
   applyBackup(json);
 }
 function restoreFromFile(inp){

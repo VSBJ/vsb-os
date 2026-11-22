@@ -391,6 +391,7 @@
           <textarea id="syncIn" class="synctext" placeholder="Paste a backup code here…"></textarea>
           <div class="syncbtns">
             <button class="btn" onclick="restoreFromCode()">Restore</button>
+            <button class="histbtn" onclick="clearSync()">✕ Clear</button>
             <label class="histbtn">📂 Open backup file<input type="file" accept=".json,application/json,text/plain" onchange="restoreFromFile(this)" hidden></label>
           </div>
         </div>
@@ -871,6 +872,11 @@ function applyBackup(json){
   state=load(); save(); render();
   document.getElementById('syncIn').value='';
   syncMsg('Restored ✓  This device now matches your other one. Press Undo if this was a mistake.',true);
+}
+function clearSync(){
+  const ta=document.getElementById('syncIn'); ta.value='';
+  const m=document.getElementById('syncMsg'); m.textContent=''; m.className='syncmsg';
+  ta.focus();
 }
 function restoreFromCode(){
   let raw=document.getElementById('syncIn').value||'';
